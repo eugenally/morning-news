@@ -1,0 +1,43 @@
+{
+  "title": "굿모닝 브리핑",
+  "sections": [
+    {
+      "title": "증시",
+      "emoji": "📈",
+      "items": [
+        { "symbol": "^KS11",  "name": "KOSPI",  "decimals": 2 },
+        { "symbol": "^KQ11",  "name": "KOSDAQ", "decimals": 2 },
+        { "symbol": "^GSPC",  "name": "S&P500", "decimals": 2 },
+        { "symbol": "^IXIC",  "name": "나스닥",  "decimals": 2 }
+      ]
+    },
+    {
+      "title": "환율",
+      "emoji": "💱",
+      "items": [
+        { "symbol": "USDKRW=X", "name": "USD/KRW", "decimals": 2 },
+        { "symbol": "JPYKRW=X", "name": "JPY/KRW", "decimals": 2 },
+        { "symbol": "EURKRW=X", "name": "EUR/KRW", "decimals": 2 }
+      ]
+    },
+    {
+      "title": "코인",
+      "emoji": "🪙",
+      "items": [
+        { "symbol": "BTC-USD", "name": "비트코인",  "decimals": 0, "prefix": "$" },
+        { "symbol": "ETH-USD", "name": "이더리움",  "decimals": 0, "prefix": "$" }
+      ]
+    }
+  ],
+  "news": {
+    "title": "뉴스 브리핑",
+    "emoji": "📰",
+    "count": 3,
+    "max_length": 20,
+    "topics": [
+      { "label": "테크", "keyword": "테크" },
+      { "label": "전쟁", "keyword": "우크라이나 전쟁" },
+      { "label": "국제", "keyword": "국제 정세" }
+    ]
+  }
+}
