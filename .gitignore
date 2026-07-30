@@ -2,3 +2,6 @@
 __pycache__/
 *.pyc
 feed.log
+
+cert_tmp.pem
+*.pem
