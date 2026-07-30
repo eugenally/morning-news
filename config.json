@@ -19,7 +19,8 @@
       "items": [
         { "symbol": "USDKRW=X", "name": "USD/KRW", "decimals": 2 },
         { "symbol": "JPYKRW=X", "name": "JPY/KRW", "decimals": 2 },
-        { "symbol": "EURKRW=X", "name": "EUR/KRW", "decimals": 2 }
+        { "symbol": "EURKRW=X", "name": "EUR/KRW", "decimals": 2 },
+        { "symbol": "CNYKRW=X", "name": "CNY/KRW", "decimals": 2 }
       ]
     },
     {
