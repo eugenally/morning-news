@@ -8,7 +8,9 @@
         { "symbol": "^KS11",  "name": "KOSPI",  "decimals": 2 },
         { "symbol": "^KQ11",  "name": "KOSDAQ", "decimals": 2 },
         { "symbol": "^GSPC",  "name": "S&P500", "decimals": 2 },
-        { "symbol": "^IXIC",  "name": "나스닥",  "decimals": 2 }
+        { "symbol": "^IXIC",  "name": "나스닥",  "decimals": 2 },
+        { "symbol": "000001.SS", "name": "상하이", "decimals": 2 },
+        { "symbol": "^HSI",   "name": "홍콩항셍", "decimals": 2 }
       ]
     },
     {
