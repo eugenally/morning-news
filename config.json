@@ -32,6 +32,10 @@
       ]
     }
   ],
+  "analysis": {
+    "enabled": true,
+    "model": "claude-opus-5"
+  },
   "news": {
     "title": "뉴스 브리핑",
     "emoji": "📰",

@@ -19,11 +19,12 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: certifi 설치
-        run: pip install --quiet certifi
+      - name: 의존성 설치
+        run: pip install --quiet certifi anthropic
 
       - name: 브리핑 전송
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python morning_feed.py
