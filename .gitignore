@@ -5,3 +5,4 @@ feed.log
 
 cert_tmp.pem
 *.pem
+.openvisio/
