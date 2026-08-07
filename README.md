@@ -58,9 +58,40 @@ python morning_feed.py --dry-run   # 전송 없이 콘솔 출력만
 python morning_feed.py             # 실제 텔레그램 전송
 ```
 
-## 4단계 · 아침 7시 자동 실행 (윈도우 작업 스케줄러)
+## 4단계 · 아침 7시 자동 실행 (GitHub Actions)
 
-관리자 권한 PowerShell에서 한 줄로 등록:
+**PC가 꺼져 있어도 실행됩니다.** 클라우드에서 돌기 때문에 이 방식을 권장합니다.
+
+1. GitHub에 저장소를 만들고 `.env`를 **뺀** 나머지 파일을 올립니다
+   (`.gitignore`가 `.env`를 자동으로 제외합니다).
+2. 저장소 **Settings → Secrets and variables → Actions**에서 아래를 등록:
+
+   | Name | 값 |
+   |---|---|
+   | `TELEGRAM_BOT_TOKEN` | 봇 토큰 |
+   | `TELEGRAM_CHAT_ID` | 채팅 ID |
+   | `ANTHROPIC_API_KEY` | API 키 (AI 분석을 쓸 때만) |
+
+3. **Actions** 탭 → **굿모닝 브리핑** → **Run workflow**로 즉시 테스트.
+
+이후 [morning.yml](.github/workflows/morning.yml)의 `schedule`에 따라 매일 자동 실행됩니다.
+
+### 예약 시각에 대해
+
+GitHub의 예약 실행은 **정시에 정확히 돌지 않습니다.** 전 세계 요청이 정각에
+몰려서 밀리는데, 실제로 `0 22`(=07:00 KST)로 두었을 때 07:56~08:03에 실행됐습니다.
+
+그래서 흔한 시각(`:00` `:15` `:30` `:45`)을 피하고 목표보다 조금 앞당겨
+`47 21 * * *`(=06:47 KST)로 잡아 두었습니다. 도착이 계속 이르거나 늦으면
+이 값을 조정하세요 — cron은 **UTC 기준**이고 `KST = UTC + 9시간`입니다.
+
+> 60일간 저장소에 아무 활동이 없으면 GitHub이 예약 실행을 자동으로 멈춥니다.
+> 그때는 안내 메일이 오고, 버튼 한 번으로 다시 켤 수 있습니다.
+
+### 대안 · 윈도우 작업 스케줄러
+
+PC를 항상 켜두는 경우에만 쓸 수 있습니다. 예약 시각에 PC가 꺼져 있으면
+그날 실행은 **건너뛰고 나중에 보충되지 않습니다.**
 
 ```powershell
 schtasks /create /tn "MorningFeed" /tr "C:\02Workspaces\newsfeed\run_feed.bat" /sc daily /st 07:00 /f
