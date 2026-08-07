@@ -65,7 +65,11 @@ def load_env(path):
 
 
 def fetch_quote(symbol):
-    """Yahoo Finance 공개 API로 현재가와 전일 종가를 가져온다."""
+    """Yahoo Finance 공개 API로 시세를 가져온다.
+
+    반환: (현재가, 전일종가, 부가지표 dict)
+    부가지표는 분석 입력용으로만 쓰이며 없을 수도 있다.
+    """
     url = YAHOO_URL.format(urllib.parse.quote(symbol))
     req = urllib.request.Request(url, headers=UA)
     with urllib.request.urlopen(req, timeout=10, context=SSL_CONTEXT) as resp:
@@ -73,7 +77,13 @@ def fetch_quote(symbol):
     meta = data["chart"]["result"][0]["meta"]
     price = meta.get("regularMarketPrice")
     prev = meta.get("chartPreviousClose") or meta.get("previousClose")
-    return price, prev
+    extra = {
+        "day_high": meta.get("regularMarketDayHigh"),
+        "day_low": meta.get("regularMarketDayLow"),
+        "w52_high": meta.get("fiftyTwoWeekHigh"),
+        "w52_low": meta.get("fiftyTwoWeekLow"),
+    }
+    return price, prev, extra
 
 
 GNEWS_URL = "https://news.google.com/rss/search?q={}&hl=ko&gl=KR&ceid=KR:ko"
@@ -141,12 +151,14 @@ def collect_market_data(config):
                    "prefix": item.get("prefix", ""),
                    "decimals": item.get("decimals", 2)}
             try:
-                price, prev = fetch_quote(item["symbol"])
+                price, prev, extra = fetch_quote(item["symbol"])
                 row["price"] = price
                 row["pct"] = (price - prev) / prev * 100 if (price and prev) else None
+                row["extra"] = extra
             except Exception as e:
                 row["price"] = None
                 row["pct"] = None
+                row["extra"] = {}
                 row["error"] = type(e).__name__
             items.append(row)
         result.append({"title": section["title"], "emoji": section["emoji"],
@@ -154,14 +166,10 @@ def collect_market_data(config):
     return result
 
 
-def collect_news(config):
-    """설정된 키워드별 헤드라인을 모아 돌려준다."""
-    news = config.get("news")
-    if not news or not news.get("topics"):
-        return []
-    count = news.get("count", 3)
+def collect_topics(topics, count):
+    """키워드 목록으로 헤드라인을 모은다."""
     out = []
-    for topic in news["topics"]:
+    for topic in topics:
         label = topic.get("label", topic.get("keyword", ""))
         try:
             heads = fetch_headlines(topic["keyword"], count)
@@ -170,6 +178,23 @@ def collect_news(config):
             out.append({"label": label, "headlines": [],
                         "error": type(e).__name__})
     return out
+
+
+def collect_news(config):
+    """브리핑에 표시할 키워드별 헤드라인을 모아 돌려준다."""
+    news = config.get("news")
+    if not news or not news.get("topics"):
+        return []
+    return collect_topics(news["topics"], news.get("count", 3))
+
+
+def collect_context_news(config):
+    """분석 입력 전용 시장 뉴스. 브리핑에는 표시하지 않는다."""
+    analysis = config.get("analysis") or {}
+    topics = analysis.get("news_topics")
+    if not topics:
+        return []
+    return collect_topics(topics, analysis.get("news_count", 4))
 
 
 def render_quote_row(row, name_w=10, price_w=12):
@@ -208,13 +233,17 @@ def build_message(config, market=None, news_data=None, issues=None):
     # AI 시장 분석 섹션 (선택)
     if issues:
         lines.append("🧠 <b>오늘의 시장 이슈 5</b>")
+        lines.append("")
         for i, issue in enumerate(issues, 1):
             title = html.escape(issue.get("title", ""), quote=False)
             detail = html.escape(issue.get("detail", ""), quote=False)
+            watch = html.escape(issue.get("watch", ""), quote=False)
             lines.append(f"<b>{i}. {title}</b>")
             if detail:
-                lines.append(f"   {detail}")
-        lines.append("")
+                lines.append(detail)
+            if watch:
+                lines.append(f"<i>👀 {watch}</i>")
+            lines.append("")
 
     # 뉴스 브리핑 섹션 (선택)
     news_cfg = config.get("news") or {}
@@ -247,12 +276,26 @@ ANALYSIS_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "title": {"type": "string",
-                              "description": "이슈 제목. 20자 이내 한국어."},
-                    "detail": {"type": "string",
-                               "description": "왜 중요한지 한 문장. 40자 이내 한국어."},
+                    "title": {
+                        "type": "string",
+                        "description": "이슈를 한 줄로 요약한 제목. 한국어 35자 이내.",
+                    },
+                    "detail": {
+                        "type": "string",
+                        "description": (
+                            "무슨 일이 일어났는지 + 왜 그런지 + 무엇을 시사하는지를 "
+                            "설명하는 2~3개 문장. 한국어 120~200자. "
+                            "근거가 되는 구체적 수치를 반드시 포함."
+                        ),
+                    },
+                    "watch": {
+                        "type": "string",
+                        "description": (
+                            "이 이슈와 관련해 앞으로 지켜볼 지점 한 문장. 한국어 50자 이내."
+                        ),
+                    },
                 },
-                "required": ["title", "detail"],
+                "required": ["title", "detail", "watch"],
                 "additionalProperties": False,
             },
         }
@@ -262,58 +305,98 @@ ANALYSIS_SCHEMA = {
 }
 
 ANALYSIS_SYSTEM = """당신은 한국 투자자를 위한 아침 시장 브리핑을 쓰는 애널리스트입니다.
-주어진 당일 시세 데이터와 뉴스 헤드라인만 근거로 삼아, 오늘 시장에서 주목할 이슈 5가지를 뽑습니다.
+주어진 당일 시세와 뉴스만 근거로, 오늘 시장에서 주목할 이슈 5가지를 뽑습니다.
 
-규칙:
-- 데이터에 없는 수치나 사건을 지어내지 마세요. 주어진 자료로 확인되는 내용만 씁니다.
-- 변동이 큰 자산, 서로 엇갈리는 움직임, 시세와 뉴스가 연결되는 지점을 우선합니다.
-- 각 이슈는 서로 다른 내용을 다룹니다. 같은 이야기를 반복하지 마세요.
-- title은 20자 이내, detail은 40자 이내로 씁니다.
-- 투자 권유나 매매 조언(사라/팔아라, 목표가)은 절대 쓰지 마세요. 사실과 해석만 전달합니다."""
+# 무엇을 이슈로 고를 것인가
+단순히 "많이 올랐다/내렸다"를 나열하지 마세요. 다음을 우선합니다.
+- 자산 간 연결: 환율과 증시, 원자재와 코인처럼 함께 움직이거나 반대로 움직인 조합
+- 이례적인 움직임: 52주 고저 대비 위치, 당일 변동폭이 유난히 큰 자산
+- 엇갈림: 같은 성격의 자산인데 방향이 다른 경우(예: 코스피는 하락, 코스닥은 상승)
+- 시세와 뉴스가 맞물리는 지점: 헤드라인이 특정 자산 움직임을 설명하는 경우
+- 조용하지만 누적되는 흐름: 폭은 작아도 방향이 일관된 자산
+
+# 어떻게 쓸 것인가
+- detail은 "무슨 일이 있었나 → 왜 그런가 → 무엇을 시사하나" 순서로 2~3문장.
+- 반드시 구체적 수치를 인용하세요. "크게 올랐다"가 아니라 "2.04% 올라 3,900선"처럼 씁니다.
+- 인과를 단정하지 마세요. 자료로 확인되지 않으면 "~로 보인다", "~와 맞물린다"로 씁니다.
+- 5가지 이슈는 서로 다른 자산군이나 다른 주제를 다룹니다. 같은 이야기를 반복하지 마세요.
+
+# 지켜야 할 선
+- 주어진 자료에 없는 수치, 사건, 발언을 지어내지 마세요. 모르면 쓰지 않습니다.
+- 뉴스 헤드라인은 제목뿐이며 본문을 보지 않았습니다. 제목이 말하는 것 이상으로 단정하지 마세요.
+- 투자 권유·매매 조언(사라/팔아라, 목표가, 비중 조절)은 절대 쓰지 마세요.
+  무슨 일이 있었고 무엇을 지켜볼지까지만 씁니다."""
 
 
-def format_data_for_analysis(market, news_data):
+def format_data_for_analysis(market, news_data, context_news=None):
     """수집한 데이터를 모델에 넘길 텍스트로 정리한다."""
-    parts = ["[당일 시세]"]
+    now = datetime.now()
+    parts = [f"기준 시각: {now:%Y-%m-%d %H:%M} (한국시간)", "", "[당일 시세]"]
     for section in market:
         parts.append(f"# {section['title']}")
         for row in section["items"]:
             if row["price"] is None:
                 continue
-            price = row["prefix"] + fmt_number(row["price"], row["decimals"])
+            d = row["decimals"]
+            price = row["prefix"] + fmt_number(row["price"], d)
             pct = "N/A" if row["pct"] is None else f"{row['pct']:+.2f}%"
-            parts.append(f"- {row['name']}: {price} (전일대비 {pct})")
+            line = f"- {row['name']}: {price} (전일대비 {pct}"
 
-    if news_data:
+            extra = row.get("extra") or {}
+            hi, lo = extra.get("day_high"), extra.get("day_low")
+            if hi and lo and row["price"]:
+                # 당일 변동폭과, 그 안에서 현재가가 어디에 있는지
+                span = (hi - lo) / row["price"] * 100
+                line += f", 당일 변동폭 {span:.2f}%"
+            w_hi, w_lo = extra.get("w52_high"), extra.get("w52_low")
+            if w_hi and w_lo and w_hi > w_lo and row["price"]:
+                pos = (row["price"] - w_lo) / (w_hi - w_lo) * 100
+                line += f", 52주 범위 내 위치 {pos:.0f}%"
+            parts.append(line + ")")
+
+    def add_news(header, data):
+        if not data:
+            return
         parts.append("")
-        parts.append("[뉴스 헤드라인]")
-        for topic in news_data:
+        parts.append(header)
+        for topic in data:
             if not topic["headlines"]:
                 continue
             parts.append(f"# {topic['label']}")
             for h in topic["headlines"]:
                 parts.append(f"- {h}")
+
+    add_news("[시장 관련 뉴스 헤드라인]", context_news)
+    add_news("[그 밖의 뉴스 헤드라인]", news_data)
+
+    parts.append("")
+    parts.append(
+        "참고: '52주 범위 내 위치'는 0%가 52주 최저가, 100%가 52주 최고가입니다."
+    )
     return "\n".join(parts)
 
 
-def analyze_market(market, news_data, api_key, model="claude-opus-5"):
+def analyze_market(market, news_data, api_key, model="claude-opus-5",
+                   context_news=None, effort="high"):
     """Claude로 당일 시장 변화를 해석해 핵심 이슈 5가지를 뽑는다."""
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
     response = client.messages.create(
         model=model,
-        max_tokens=8000,
+        max_tokens=16000,
         system=ANALYSIS_SYSTEM,
         output_config={
             "format": {"type": "json_schema", "schema": ANALYSIS_SCHEMA},
-            "effort": "medium",
+            "effort": effort,
         },
         messages=[{
             "role": "user",
             "content": (
-                f"{format_data_for_analysis(market, news_data)}\n\n"
-                "위 자료를 바탕으로 오늘 주목할 이슈를 정확히 5가지 뽑아주세요."
+                f"{format_data_for_analysis(market, news_data, context_news)}\n\n"
+                "위 자료를 바탕으로 오늘 주목할 이슈를 정확히 5가지 뽑아주세요. "
+                "자산 간 연결과 이례적인 움직임을 먼저 찾아보고, "
+                "각 이슈마다 근거가 되는 수치를 인용해 주세요."
             ),
         }],
     )
@@ -359,17 +442,21 @@ def main():
     api_key = setting("ANTHROPIC_API_KEY")
     if analysis.get("enabled", True) and api_key:
         try:
-            issues = analyze_market(market, news_data, api_key,
-                                    analysis.get("model", "claude-opus-5"))
+            issues = analyze_market(
+                market, news_data, api_key,
+                model=analysis.get("model", "claude-opus-5"),
+                context_news=collect_context_news(config),
+                effort=analysis.get("effort", "high"),
+            )
         except Exception as e:
             print(f"[경고] 시장 분석 실패: {type(e).__name__}: {e}", file=sys.stderr)
 
     message = build_message(config, market, news_data, issues)
 
     if dry_run:
-        # 콘솔 확인용: HTML 태그를 걷어내고 출력
+        # 콘솔 확인용: HTML 태그와 엔티티를 실제 표시와 같게 되돌려 출력
         import re
-        plain = re.sub(r"</?(b|i|pre)>", "", message)
+        plain = html.unescape(re.sub(r"</?(b|i|pre)>", "", message))
         print(plain)
         return
 

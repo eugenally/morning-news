@@ -34,7 +34,16 @@
   ],
   "analysis": {
     "enabled": true,
-    "model": "claude-opus-5"
+    "model": "claude-opus-5",
+    "effort": "high",
+    "news_count": 4,
+    "news_topics": [
+      { "label": "국내증시", "keyword": "코스피 증시 마감" },
+      { "label": "환율",     "keyword": "원달러 환율" },
+      { "label": "미국증시", "keyword": "뉴욕증시 마감" },
+      { "label": "금리",     "keyword": "연준 금리" },
+      { "label": "코인",     "keyword": "비트코인 시세" }
+    ]
   },
   "news": {
     "title": "뉴스 브리핑",
